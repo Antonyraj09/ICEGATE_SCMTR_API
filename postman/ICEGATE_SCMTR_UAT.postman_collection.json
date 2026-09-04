@@ -1,0 +1,208 @@
+{
+  "info": {
+    "_postman_id": "e4f2a6b0-0000-4c1a-9d2e-icegatescmtr02",
+    "name": "ICEGATE SCMTR Open API - UAT",
+    "description": "UAT collection for the ICEGATE SCMTR Open API integration (API Contract Document v1.6). Folder 1 talks directly to ICEGATE UAT for low-level troubleshooting. Folder 2 talks to OUR Icegate.Integration .NET 8 API, which is what the legacy .NET Framework 4.0 application actually calls. No secrets are stored in this collection - populate the paired environment file's secret variables locally.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. ICEGATE Direct (Troubleshooting only)",
+      "item": [
+        {
+          "name": "Generate Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": \"{{icegate_encrypted_data}}\"\n}"
+            },
+            "url": { "raw": "{{auth_url}}", "host": [ "{{auth_url}}" ] },
+            "description": "POST {{auth_url}} - 'data' must be the pre-encrypted credential payload required by ICEGATE. Never place plaintext username/password here."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "var token = body.token || body.access_token;",
+                  "if (token) { pm.environment.set('token', token); }",
+                  "pm.test('Token present in response', function () { pm.expect(token).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upload SCMTR (direct to ICEGATE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": { "raw": "{{upload_url}}", "host": [ "{{upload_url}}" ] },
+            "description": "POST {{upload_url}} - multipart/form-data, header token: <accessToken>. Use this only to isolate whether a failure is in ICEGATE itself vs. our integration API."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var body = pm.response.json();",
+                  "if (body && body.uniqueId) { pm.environment.set('unique_id', body.uniqueId); }",
+                  "pm.test('validationStatus present', function () { pm.expect(body).to.have.property('validationStatus'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ACK (direct to ICEGATE) [CONFIRM_WITH_ICEGATE URL]",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senderId\": \"{{sender_id}}\",\n  \"uniqueId\": \"{{unique_id}}\"\n}"
+            },
+            "url": { "raw": "{{get_ack_url}}", "host": [ "{{get_ack_url}}" ] },
+            "description": "The document indicates the Get Acknowledgement URL must be rechecked with ICEGATE before integration testing/go-live. Replace {{get_ack_url}} with the ICEGATE-confirmed UAT endpoint once known - do not assume a value."
+          }
+        },
+        {
+          "name": "Get ZIP ACK (direct to ICEGATE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"icegateId\": \"{{icegate_id}}\",\n  \"messageId\": \"{{message_id}}\",\n  \"custodianCode\": \"{{custodian_code}}\"\n}"
+            },
+            "url": {
+              "raw": "{{get_zip_url}}?batchSize={{batch_size}}",
+              "host": [ "{{get_zip_url}}" ],
+              "query": [ { "key": "batchSize", "value": "{{batch_size}}" } ]
+            },
+            "description": "POST {{get_zip_url}}?batchSize=1..50 - multipart response containing icegateId, messageId, custodianCode, responseId, fileCount, responseDesc, and the ZIP file."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Our API (Icegate.Integration .NET 8)",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{our_api_url}}/health", "host": [ "{{our_api_url}}" ], "path": [ "health" ] }
+          }
+        },
+        {
+          "name": "ICEGATE Config Health Check",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "X-API-KEY", "value": "{{our_api_key}}" } ],
+            "url": { "raw": "{{our_api_url}}/api/icegate/health", "host": [ "{{our_api_url}}" ], "path": [ "api", "icegate", "health" ] }
+          }
+        },
+        {
+          "name": "Upload SCMTR",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "X-API-KEY", "value": "{{our_api_key}}" } ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": [] },
+                { "key": "localReferenceNo", "value": "{{local_reference_no}}", "type": "text" },
+                { "key": "icegateId", "value": "{{icegate_id}}", "type": "text" },
+                { "key": "senderId", "value": "{{sender_id}}", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{our_api_url}}/api/icegate/inbound/upload",
+              "host": [ "{{our_api_url}}" ],
+              "path": [ "api", "icegate", "inbound", "upload" ]
+            },
+            "description": "TC04/TC05/TC06/TC09/TC10 - submit an SCMTR JSON file. Attach a valid file for the happy path, or a malformed/empty one to exercise validation."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var body = pm.response.json();",
+                  "if (body && body.data && body.data.uniqueId) { pm.environment.set('unique_id', body.data.uniqueId); }",
+                  "pm.test('correlationId present', function () { pm.expect(body.correlationId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get ACK",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-KEY", "value": "{{our_api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"senderId\": \"{{sender_id}}\",\n  \"uniqueId\": \"{{unique_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{our_api_url}}/api/icegate/ack",
+              "host": [ "{{our_api_url}}" ],
+              "path": [ "api", "icegate", "ack" ]
+            },
+            "description": "TC11/TC12/TC13 - retrieve the ACK for a previously uploaded uniqueId. A 202 response means the ACK is not yet available - retry later."
+          }
+        },
+        {
+          "name": "Get ZIP ACK",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-API-KEY", "value": "{{our_api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"icegateId\": \"{{icegate_id}}\",\n  \"messageId\": \"{{message_id}}\",\n  \"custodianCode\": \"{{custodian_code}}\",\n  \"batchSize\": {{batch_size}}\n}"
+            },
+            "url": {
+              "raw": "{{our_api_url}}/api/icegate/outbound/zip-ack",
+              "host": [ "{{our_api_url}}" ],
+              "path": [ "api", "icegate", "outbound", "zip-ack" ]
+            },
+            "description": "TC14/TC15/TC16/TC21 - retrieve the batched ZIP acknowledgement. batchSize must be 1-50."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
