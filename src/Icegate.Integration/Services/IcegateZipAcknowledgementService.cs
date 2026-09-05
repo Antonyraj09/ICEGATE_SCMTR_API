@@ -20,6 +20,7 @@ public class IcegateZipAcknowledgementService : IIcegateZipAcknowledgementServic
     private readonly IIcegateHttpClient _httpClient;
     private readonly ITokenRetryExecutor _retryExecutor;
     private readonly ITransactionLogService _transactionLog;
+    private readonly IIcegateClientRegistry _clientRegistry;
     private readonly IOptionsMonitor<IcegateSettings> _icegateSettings;
     private readonly IOptionsMonitor<FileStorageSettings> _storageSettings;
     private readonly ILogger<IcegateZipAcknowledgementService> _logger;
@@ -28,6 +29,7 @@ public class IcegateZipAcknowledgementService : IIcegateZipAcknowledgementServic
         IIcegateHttpClient httpClient,
         ITokenRetryExecutor retryExecutor,
         ITransactionLogService transactionLog,
+        IIcegateClientRegistry clientRegistry,
         IOptionsMonitor<IcegateSettings> icegateSettings,
         IOptionsMonitor<FileStorageSettings> storageSettings,
         ILogger<IcegateZipAcknowledgementService> logger)
@@ -35,17 +37,33 @@ public class IcegateZipAcknowledgementService : IIcegateZipAcknowledgementServic
         _httpClient = httpClient;
         _retryExecutor = retryExecutor;
         _transactionLog = transactionLog;
+        _clientRegistry = clientRegistry;
         _icegateSettings = icegateSettings;
         _storageSettings = storageSettings;
         _logger = logger;
     }
 
     public async Task<ZipAckResultData> GetZipAcknowledgementAsync(
+        string clientId,
         GetZipAckRequest request,
         string correlationId,
         CancellationToken cancellationToken = default)
     {
         var icegateSettings = _icegateSettings.CurrentValue;
+
+        if (!_clientRegistry.TryGetByClientId(clientId, out var client) || client is null)
+        {
+            throw new IcegateRequestValidationException(IcegateErrorCode.InvalidApiKey, $"No enabled client is registered for ClientId '{clientId}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.IcegateId))
+        {
+            request.IcegateId = client.DefaultIcegateId;
+        }
+        if (string.IsNullOrWhiteSpace(request.CustodianCode))
+        {
+            request.CustodianCode = client.DefaultCustodianCode;
+        }
 
         ValidateRequest(request, icegateSettings);
 
@@ -55,6 +73,7 @@ public class IcegateZipAcknowledgementService : IIcegateZipAcknowledgementServic
         }
 
         var transaction = await _transactionLog.CreateAsync(
+            clientId,
             IcegateApiType.GET_ZIP_ACK,
             correlationId,
             localReferenceNo: null,
@@ -79,6 +98,7 @@ public class IcegateZipAcknowledgementService : IIcegateZipAcknowledgementServic
             var url = $"{icegateSettings.GetZipAcknowledgementUrl}?batchSize={request.BatchSize}";
 
             using var response = await _retryExecutor.ExecuteAsync(
+                clientId,
                 (token, ct) => _httpClient.PostJsonAsync(
                     url,
                     requestBody,
@@ -137,8 +157,8 @@ public class IcegateZipAcknowledgementService : IIcegateZipAcknowledgementServic
                 cancellationToken: cancellationToken);
 
             _logger.LogInformation(
-                "ZIP ACK retrieved for CorrelationId={CorrelationId} MessageId={MessageId} FileCount={FileCount}",
-                correlationId, request.MessageId, zipResult.FileCount);
+                "ZIP ACK retrieved. ClientId={ClientId} CorrelationId={CorrelationId} MessageId={MessageId} FileCount={FileCount}",
+                clientId, correlationId, request.MessageId, zipResult.FileCount);
 
             return new ZipAckResultData
             {

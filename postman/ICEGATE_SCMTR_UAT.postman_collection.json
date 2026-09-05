@@ -122,9 +122,32 @@
           "name": "ICEGATE Config Health Check",
           "request": {
             "method": "GET",
-            "header": [ { "key": "X-API-KEY", "value": "{{our_api_key}}" } ],
-            "url": { "raw": "{{our_api_url}}/api/icegate/health", "host": [ "{{our_api_url}}" ], "path": [ "api", "icegate", "health" ] }
+            "header": [],
+            "url": { "raw": "{{our_api_url}}/api/icegate/health", "host": [ "{{our_api_url}}" ], "path": [ "api", "icegate", "health" ] },
+            "description": "Anonymous - no X-API-KEY required. Reports aggregate/non-sensitive config state only (never anything client-specific)."
           }
+        },
+        {
+          "name": "WhoAmI (verify client onboarding)",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "X-API-KEY", "value": "{{our_api_key}}" } ],
+            "url": { "raw": "{{our_api_url}}/api/icegate/whoami", "host": [ "{{our_api_url}}" ], "path": [ "api", "icegate", "whoami" ] },
+            "description": "Confirms which ClientId {{our_api_key}} resolves to. Does not call ICEGATE. Use this first when onboarding a new client - see docs/Multi_Client_Onboarding.md."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.test('clientId present', function () { pm.expect(body.data.clientId).to.be.a('string').and.not.empty; });"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Upload SCMTR",

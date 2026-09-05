@@ -34,6 +34,21 @@ public class IcegateController : ControllerBase
     }
 
     /// <summary>
+    /// Confirms which onboarded client the supplied X-API-KEY resolves to, without calling
+    /// ICEGATE. Use this during client onboarding to verify a newly issued key is wired up
+    /// correctly before running any real SCMTR traffic through it.
+    /// </summary>
+    [HttpGet("whoami")]
+    [ProducesResponseType(typeof(IcegateApiResult<object>), StatusCodes.Status200OK)]
+    public IActionResult WhoAmI()
+    {
+        var correlationId = HttpContext.GetCorrelationId();
+        var clientId = HttpContext.GetClientId();
+
+        return Ok(IcegateApiResult<object>.Ok(new { clientId }, "API key resolved successfully.", correlationId));
+    }
+
+    /// <summary>
     /// Accepts an SCMTR JSON file from the legacy application, validates it, obtains/reuses
     /// an ICEGATE token, and submits it to the ICEGATE inbound upload API. Returns the
     /// ICEGATE-issued uniqueId on success.
@@ -46,9 +61,10 @@ public class IcegateController : ControllerBase
     public async Task<IActionResult> UploadInbound([FromForm] InboundUploadRequest request, CancellationToken cancellationToken)
     {
         var correlationId = HttpContext.GetCorrelationId();
+        var clientId = HttpContext.GetClientId();
 
         var data = await _fileSubmissionService.SubmitAsync(
-            request.File, request.LocalReferenceNo, request.IcegateId, request.SenderId, correlationId, cancellationToken);
+            clientId, request.File, request.LocalReferenceNo, request.IcegateId, request.SenderId, correlationId, cancellationToken);
 
         return Ok(IcegateApiResult<InboundUploadResultData>.Ok(data, "File submitted successfully.", correlationId));
     }
@@ -66,9 +82,10 @@ public class IcegateController : ControllerBase
     public async Task<IActionResult> GetAcknowledgement([FromBody] GetAckRequest request, CancellationToken cancellationToken)
     {
         var correlationId = HttpContext.GetCorrelationId();
+        var clientId = HttpContext.GetClientId();
 
         var data = await _acknowledgementService.GetAcknowledgementAsync(
-            request.SenderId, request.UniqueId, correlationId, cancellationToken);
+            clientId, request.SenderId, request.UniqueId, correlationId, cancellationToken);
 
         return Ok(IcegateApiResult<AckResultData>.Ok(data, "Acknowledgement retrieved successfully.", correlationId));
     }
@@ -84,8 +101,9 @@ public class IcegateController : ControllerBase
     public async Task<IActionResult> GetZipAcknowledgement([FromBody] GetZipAckRequest request, CancellationToken cancellationToken)
     {
         var correlationId = HttpContext.GetCorrelationId();
+        var clientId = HttpContext.GetClientId();
 
-        var data = await _zipAcknowledgementService.GetZipAcknowledgementAsync(request, correlationId, cancellationToken);
+        var data = await _zipAcknowledgementService.GetZipAcknowledgementAsync(clientId, request, correlationId, cancellationToken);
 
         return Ok(IcegateApiResult<ZipAckResultData>.Ok(data, "ZIP acknowledgement retrieved successfully.", correlationId));
     }

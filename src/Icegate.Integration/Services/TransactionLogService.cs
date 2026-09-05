@@ -20,6 +20,7 @@ public class TransactionLogService : ITransactionLogService
     }
 
     public async Task<IcegateApiTransaction> CreateAsync(
+        string clientId,
         IcegateApiType apiType,
         string correlationId,
         string? localReferenceNo,
@@ -34,6 +35,7 @@ public class TransactionLogService : ITransactionLogService
     {
         var entity = new IcegateApiTransaction
         {
+            ClientId = clientId,
             ApiType = apiType,
             Environment = _settings.CurrentValue.Environment,
             CorrelationId = correlationId,
@@ -89,10 +91,10 @@ public class TransactionLogService : ITransactionLogService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<IcegateApiTransaction?> FindLatestByUniqueIdAsync(string uniqueId, CancellationToken cancellationToken = default)
+    public async Task<IcegateApiTransaction?> FindLatestByUniqueIdAsync(string clientId, string uniqueId, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Transactions
-            .Where(t => t.IcegateUniqueId == uniqueId)
+            .Where(t => t.ClientId == clientId && t.IcegateUniqueId == uniqueId)
             .OrderByDescending(t => t.CreatedDate)
             .FirstOrDefaultAsync(cancellationToken);
     }

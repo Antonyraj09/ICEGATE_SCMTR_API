@@ -20,6 +20,7 @@ public class IcegateAcknowledgementService : IIcegateAcknowledgementService
     private readonly IIcegateHttpClient _httpClient;
     private readonly ITokenRetryExecutor _retryExecutor;
     private readonly ITransactionLogService _transactionLog;
+    private readonly IIcegateClientRegistry _clientRegistry;
     private readonly IOptionsMonitor<IcegateSettings> _icegateSettings;
     private readonly IOptionsMonitor<FileStorageSettings> _storageSettings;
     private readonly ILogger<IcegateAcknowledgementService> _logger;
@@ -28,6 +29,7 @@ public class IcegateAcknowledgementService : IIcegateAcknowledgementService
         IIcegateHttpClient httpClient,
         ITokenRetryExecutor retryExecutor,
         ITransactionLogService transactionLog,
+        IIcegateClientRegistry clientRegistry,
         IOptionsMonitor<IcegateSettings> icegateSettings,
         IOptionsMonitor<FileStorageSettings> storageSettings,
         ILogger<IcegateAcknowledgementService> logger)
@@ -35,17 +37,29 @@ public class IcegateAcknowledgementService : IIcegateAcknowledgementService
         _httpClient = httpClient;
         _retryExecutor = retryExecutor;
         _transactionLog = transactionLog;
+        _clientRegistry = clientRegistry;
         _icegateSettings = icegateSettings;
         _storageSettings = storageSettings;
         _logger = logger;
     }
 
     public async Task<AckResultData> GetAcknowledgementAsync(
+        string clientId,
         string senderId,
         string uniqueId,
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (!_clientRegistry.TryGetByClientId(clientId, out var client) || client is null)
+        {
+            throw new IcegateRequestValidationException(IcegateErrorCode.InvalidApiKey, $"No enabled client is registered for ClientId '{clientId}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(senderId))
+        {
+            senderId = client.DefaultSenderId;
+        }
+
         if (string.IsNullOrWhiteSpace(senderId))
         {
             throw new IcegateRequestValidationException(IcegateErrorCode.MissingSenderId, IcegateDocumentedErrors.SenderIdRequired);
@@ -64,6 +78,7 @@ public class IcegateAcknowledgementService : IIcegateAcknowledgementService
         }
 
         var transaction = await _transactionLog.CreateAsync(
+            clientId,
             IcegateApiType.GET_ACK,
             correlationId,
             localReferenceNo: null,
@@ -81,6 +96,7 @@ public class IcegateAcknowledgementService : IIcegateAcknowledgementService
             var requestBody = new IcegateGetAckRequest { SenderId = senderId, UniqueId = uniqueId };
 
             using var response = await _retryExecutor.ExecuteAsync(
+                clientId,
                 (token, ct) => _httpClient.PostJsonAsync(
                     icegateSettings.GetAcknowledgementUrl,
                     requestBody,
@@ -132,7 +148,8 @@ public class IcegateAcknowledgementService : IIcegateAcknowledgementService
                 cancellationToken: cancellationToken);
 
             _logger.LogInformation(
-                "ACK retrieved for CorrelationId={CorrelationId} UniqueId={UniqueId}", correlationId, uniqueId);
+                "ACK retrieved. ClientId={ClientId} CorrelationId={CorrelationId} UniqueId={UniqueId}",
+                clientId, correlationId, uniqueId);
 
             return new AckResultData
             {

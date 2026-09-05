@@ -23,6 +23,7 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
     private readonly IIcegateHttpClient _httpClient;
     private readonly ITokenRetryExecutor _retryExecutor;
     private readonly ITransactionLogService _transactionLog;
+    private readonly IIcegateClientRegistry _clientRegistry;
     private readonly IOptionsMonitor<IcegateSettings> _icegateSettings;
     private readonly IOptionsMonitor<FileStorageSettings> _storageSettings;
     private readonly ILogger<IcegateFileSubmissionService> _logger;
@@ -31,6 +32,7 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
         IIcegateHttpClient httpClient,
         ITokenRetryExecutor retryExecutor,
         ITransactionLogService transactionLog,
+        IIcegateClientRegistry clientRegistry,
         IOptionsMonitor<IcegateSettings> icegateSettings,
         IOptionsMonitor<FileStorageSettings> storageSettings,
         ILogger<IcegateFileSubmissionService> logger)
@@ -38,12 +40,14 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
         _httpClient = httpClient;
         _retryExecutor = retryExecutor;
         _transactionLog = transactionLog;
+        _clientRegistry = clientRegistry;
         _icegateSettings = icegateSettings;
         _storageSettings = storageSettings;
         _logger = logger;
     }
 
     public async Task<InboundUploadResultData> SubmitAsync(
+        string clientId,
         IFormFile file,
         string? localReferenceNo,
         string? icegateId,
@@ -53,6 +57,14 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
     {
         var storageSettings = _storageSettings.CurrentValue;
         var icegateSettings = _icegateSettings.CurrentValue;
+
+        if (!_clientRegistry.TryGetByClientId(clientId, out var client) || client is null)
+        {
+            throw new IcegateRequestValidationException(IcegateErrorCode.InvalidApiKey, $"No enabled client is registered for ClientId '{clientId}'.");
+        }
+
+        var effectiveSenderId = string.IsNullOrWhiteSpace(senderId) ? client.DefaultSenderId : senderId;
+        var effectiveIcegateId = string.IsNullOrWhiteSpace(icegateId) ? client.DefaultIcegateId : icegateId;
 
         var (isValid, errorCode, error) = await FileValidationHelper.ValidateAsync(file, storageSettings, cancellationToken);
         if (!isValid)
@@ -72,13 +84,14 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
         var stored = await FileStorageHelper.SaveAsync(storageSettings.InboundPath, file.FileName, fileBytes, cancellationToken);
 
         var transaction = await _transactionLog.CreateAsync(
+            clientId,
             IcegateApiType.INBOUND_UPLOAD,
             correlationId,
             localReferenceNo,
             stored.GeneratedFileName,
             fileHash,
-            senderId,
-            icegateId,
+            effectiveSenderId,
+            effectiveIcegateId,
             custodianCode: null,
             messageId: null,
             TransactionStatus.CREATED,
@@ -87,6 +100,7 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
         try
         {
             using var response = await _retryExecutor.ExecuteAsync(
+                clientId,
                 (token, ct) => _httpClient.PostMultipartAsync(
                     icegateSettings.InboundUploadUrl,
                     BuildMultipartContent(fileBytes, file.FileName),
@@ -121,8 +135,8 @@ public class IcegateFileSubmissionService : IIcegateFileSubmissionService
                 cancellationToken: cancellationToken);
 
             _logger.LogInformation(
-                "SCMTR file submitted to ICEGATE. CorrelationId={CorrelationId} UniqueId={UniqueId}",
-                correlationId, icegateResponse.UniqueId);
+                "SCMTR file submitted to ICEGATE. ClientId={ClientId} CorrelationId={CorrelationId} UniqueId={UniqueId}",
+                clientId, correlationId, icegateResponse.UniqueId);
 
             return new InboundUploadResultData
             {

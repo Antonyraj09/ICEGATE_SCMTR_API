@@ -6,6 +6,7 @@ namespace Icegate.Integration.Services.Interfaces;
 public interface IIcegateFileSubmissionService
 {
     Task<InboundUploadResultData> SubmitAsync(
+        string clientId,
         IFormFile file,
         string? localReferenceNo,
         string? icegateId,

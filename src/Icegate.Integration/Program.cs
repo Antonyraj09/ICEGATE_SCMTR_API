@@ -45,6 +45,7 @@ try
     builder.Services.Configure<IcegateSettings>(builder.Configuration.GetSection(IcegateSettings.SectionName));
     builder.Services.Configure<InternalApiSettings>(builder.Configuration.GetSection(InternalApiSettings.SectionName));
     builder.Services.Configure<FileStorageSettings>(builder.Configuration.GetSection(FileStorageSettings.SectionName));
+    builder.Services.Configure<List<IcegateClientSettings>>(builder.Configuration.GetSection(IcegateClientSettings.SectionName));
 
     // ---- Database (transaction log) ----
     var connectionString = builder.Configuration.GetConnectionString("IcegateDb");
@@ -80,6 +81,7 @@ try
     // they hold no per-request/scoped state (IcegateTokenService's in-memory token cache is
     // deliberately process-wide so the token is generated once and reused, not per request).
     builder.Services.AddSingleton<IIcegateHttpClient, IcegateHttpClient>();
+    builder.Services.AddSingleton<IIcegateClientRegistry, IcegateClientRegistry>();
     builder.Services.AddSingleton<IIcegateAuthenticationService, IcegateAuthenticationService>();
     builder.Services.AddSingleton<IIcegateTokenService, IcegateTokenService>();
     builder.Services.AddScoped<ITokenRetryExecutor, TokenRetryExecutor>();

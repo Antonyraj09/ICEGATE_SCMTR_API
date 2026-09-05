@@ -17,6 +17,7 @@ BEGIN
     CREATE TABLE dbo.ICEGATE_API_TRANSACTION
     (
         Id                   BIGINT IDENTITY(1,1) NOT NULL,
+        ClientId             NVARCHAR(100)   NOT NULL,  -- onboarded client (own ICEGATE identity) - see docs/Multi_Client_Onboarding.md
         LocalReferenceNo     NVARCHAR(100)   NULL,
         FileName             NVARCHAR(500)   NULL,
         FileHash             NVARCHAR(128)   NULL,
@@ -43,6 +44,12 @@ BEGIN
 
         CONSTRAINT PK_ICEGATE_API_TRANSACTION PRIMARY KEY CLUSTERED (Id ASC)
     );
+
+    CREATE NONCLUSTERED INDEX IX_ICEGATE_API_TRANSACTION_ClientId
+        ON dbo.ICEGATE_API_TRANSACTION (ClientId);
+
+    CREATE NONCLUSTERED INDEX IX_ICEGATE_API_TRANSACTION_Client_UniqueId
+        ON dbo.ICEGATE_API_TRANSACTION (ClientId, IcegateUniqueId);
 
     CREATE NONCLUSTERED INDEX IX_ICEGATE_API_TRANSACTION_UniqueId
         ON dbo.ICEGATE_API_TRANSACTION (IcegateUniqueId);

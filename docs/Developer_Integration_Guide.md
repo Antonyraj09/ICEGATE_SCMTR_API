@@ -20,7 +20,8 @@ token lifecycle described below - the legacy app never sees an ICEGATE token.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Liveness probe - does not call ICEGATE. |
-| GET | `/api/icegate/health` | Reports which ICEGATE endpoints are configured/confirmed. |
+| GET | `/api/icegate/health` | Reports which ICEGATE endpoints are configured/confirmed (anonymous, aggregate-only - no client-specific data). |
+| GET | `/api/icegate/whoami` | Requires `X-API-KEY`; confirms which ClientId that key resolves to. Does not call ICEGATE - use it to verify a newly issued key before running real traffic. |
 | POST | `/api/icegate/inbound/upload` | Submit an SCMTR JSON file; returns ICEGATE's `uniqueId`. |
 | POST | `/api/icegate/ack` | Retrieve the acknowledgement for a previously submitted `uniqueId`. |
 | POST | `/api/icegate/outbound/zip-ack` | Retrieve a batched ZIP acknowledgement. |
@@ -54,9 +55,14 @@ Every call (except `/health` and Swagger) requires the header:
 X-API-KEY: <internal-api-key-for-this-application>
 ```
 
-This key is provisioned separately per consuming application/environment via
-`InternalApi:ApiKeys` in our API's configuration (secret storage in shared/production
-environments). It is **not** the ICEGATE API key.
+This key is unique to YOUR client - it is provisioned as one entry in the `IcegateClients`
+configuration array (`IcegateClients[].ApiKey`, secret storage in shared/production
+environments) when your application is onboarded (see
+`docs/Multi_Client_Onboarding.md`). It is **not** the ICEGATE API key, and it is never shared
+with another client - a valid key both authenticates your application to our API AND selects
+your client's own ICEGATE credentials/token/default sender-ID-ICEGATE-ID-custodian-code, so
+two clients' filings and transaction history are always kept separate even though they hit
+the same API.
 
 ## 4. Uploading an SCMTR file
 
@@ -67,8 +73,8 @@ X-API-KEY: <key>
 
 file = <scmtr.json>
 localReferenceNo = <optional, your own tracking id>
-icegateId = <optional>
-senderId = <optional>
+icegateId = <optional - defaults to your client's registered DefaultIcegateId if omitted>
+senderId = <optional - defaults to your client's registered DefaultSenderId if omitted>
 ```
 
 Success (`data`):

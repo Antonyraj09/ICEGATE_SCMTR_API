@@ -1,11 +1,13 @@
 namespace Icegate.Integration.Configuration;
 
 /// <summary>
-/// Strongly typed binding of the "Icegate" configuration section.
-/// Values are environment-specific (UAT / PROD) and must never contain
-/// hard-coded secrets in source control. Any field whose value equals
-/// "CONFIRM_WITH_ICEGATE" is a placeholder pending confirmation from the
-/// ICEGATE team per the API Contract Document (SCMTR Open API Filing v1.6).
+/// Strongly typed binding of the "Icegate" configuration section - the shared
+/// infrastructure (endpoints/environment/timeouts) used by EVERY onboarded client. Per-client
+/// credentials and identifiers (encrypted credential data, sender/ICEGATE ID, custodian code,
+/// the internal API key) live in <see cref="IcegateClientSettings"/> instead, one entry per
+/// client under the "IcegateClients" section - see docs/Multi_Client_Onboarding.md.
+/// Any field whose value equals "CONFIRM_WITH_ICEGATE" is a placeholder pending confirmation
+/// from the ICEGATE team per the API Contract Document (SCMTR Open API Filing v1.6).
 /// </summary>
 public class IcegateSettings
 {
@@ -13,7 +15,7 @@ public class IcegateSettings
 
     public const string ConfirmWithIcegatePlaceholder = "CONFIRM_WITH_ICEGATE";
 
-    /// <summary>"UAT" or "PROD". Drives which URLs/credentials are considered active.</summary>
+    /// <summary>"UAT" or "PROD". Drives which URLs are considered active for every client.</summary>
     public string Environment { get; set; } = "UAT";
 
     public string AuthenticationUrl { get; set; } = string.Empty;
@@ -28,18 +30,6 @@ public class IcegateSettings
     public string GetAcknowledgementUrl { get; set; } = ConfirmWithIcegatePlaceholder;
 
     public string GetZipAcknowledgementUrl { get; set; } = string.Empty;
-
-    /// <summary>ICEGATE-issued API key / subscription key, supplied via secret storage, never source control.</summary>
-    public string ApiKey { get; set; } = string.Empty;
-
-    /// <summary>Encrypted credential payload (or the material used to build it) for the Authentication API "data" field.</summary>
-    public string EncryptedCredentialData { get; set; } = string.Empty;
-
-    public string IcegateId { get; set; } = string.Empty;
-
-    public string SenderId { get; set; } = string.Empty;
-
-    public string CustodianCode { get; set; } = string.Empty;
 
     public int TimeoutSeconds { get; set; } = 120;
 

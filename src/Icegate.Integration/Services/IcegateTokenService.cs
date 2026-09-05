@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Icegate.Integration.Configuration;
 using Icegate.Integration.Models.Authentication;
 using Icegate.Integration.Services.Interfaces;
@@ -6,19 +7,21 @@ using Microsoft.Extensions.Options;
 namespace Icegate.Integration.Services;
 
 /// <summary>
-/// Centralized in-memory ICEGATE token manager. Generates a token only when no valid
-/// cached token exists, reuses it across requests, and refreshes it automatically before
-/// the configurable safety buffer expires. Thread-safe via a semaphore so concurrent
-/// requests do not each generate a new token. The token value is never logged.
+/// Centralized in-memory ICEGATE token manager, keyed per client. Generates a token only
+/// when no valid cached token exists for that client, reuses it across requests, and
+/// refreshes it automatically before the configurable safety buffer expires. Thread-safe
+/// per-client via a per-client semaphore, so concurrent requests for the SAME client do not
+/// each generate a new token, while different clients never block on each other. Token
+/// values are never logged.
 /// </summary>
 public class IcegateTokenService : IIcegateTokenService
 {
     private readonly IIcegateAuthenticationService _authenticationService;
     private readonly IOptionsMonitor<IcegateSettings> _settings;
     private readonly ILogger<IcegateTokenService> _logger;
-    private readonly SemaphoreSlim _lock = new(1, 1);
 
-    private IcegateCachedToken? _cachedToken;
+    private readonly ConcurrentDictionary<string, IcegateCachedToken> _cachedTokensByClient = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locksByClient = new(StringComparer.OrdinalIgnoreCase);
 
     public IcegateTokenService(
         IIcegateAuthenticationService authenticationService,
@@ -30,52 +33,53 @@ public class IcegateTokenService : IIcegateTokenService
         _logger = logger;
     }
 
-    public async Task<string> GetTokenAsync(CancellationToken cancellationToken = default)
+    public async Task<string> GetTokenAsync(string clientId, CancellationToken cancellationToken = default)
     {
         var safetyBuffer = TimeSpan.FromSeconds(Math.Max(0, _settings.CurrentValue.TokenSafetyBufferSeconds));
 
-        var existing = _cachedToken;
-        if (existing is not null && existing.IsUsable(safetyBuffer))
+        if (_cachedTokensByClient.TryGetValue(clientId, out var existing) && existing.IsUsable(safetyBuffer))
         {
             return existing.Token;
         }
 
-        await _lock.WaitAsync(cancellationToken);
+        var clientLock = _locksByClient.GetOrAdd(clientId, _ => new SemaphoreSlim(1, 1));
+
+        await clientLock.WaitAsync(cancellationToken);
         try
         {
-            // Re-check after acquiring the lock: another caller may have already refreshed it.
-            existing = _cachedToken;
-            if (existing is not null && existing.IsUsable(safetyBuffer))
+            // Re-check after acquiring the lock: another caller for the same client may have
+            // already refreshed it while we were waiting.
+            if (_cachedTokensByClient.TryGetValue(clientId, out existing) && existing.IsUsable(safetyBuffer))
             {
                 return existing.Token;
             }
 
-            return await GenerateAndCacheTokenAsync(cancellationToken);
+            return await GenerateAndCacheTokenAsync(clientId, cancellationToken);
         }
         finally
         {
-            _lock.Release();
+            clientLock.Release();
         }
     }
 
-    public void InvalidateCachedToken()
+    public void InvalidateCachedToken(string clientId)
     {
-        _logger.LogInformation("Invalidating cached ICEGATE token.");
-        _cachedToken = null;
+        _logger.LogInformation("Invalidating cached ICEGATE token for ClientId={ClientId}.", clientId);
+        _cachedTokensByClient.TryRemove(clientId, out _);
     }
 
-    private async Task<string> GenerateAndCacheTokenAsync(CancellationToken cancellationToken)
+    private async Task<string> GenerateAndCacheTokenAsync(string clientId, CancellationToken cancellationToken)
     {
-        var (token, expiresAtUtc) = await _authenticationService.AuthenticateAsync(cancellationToken);
+        var (token, expiresAtUtc) = await _authenticationService.AuthenticateAsync(clientId, cancellationToken);
 
-        _cachedToken = new IcegateCachedToken
+        _cachedTokensByClient[clientId] = new IcegateCachedToken
         {
             Token = token,
             IssuedAtUtc = DateTimeOffset.UtcNow,
             ExpiresAtUtc = expiresAtUtc
         };
 
-        _logger.LogInformation("ICEGATE token cached. ExpiresAtUtc={ExpiresAtUtc}", expiresAtUtc);
+        _logger.LogInformation("ICEGATE token cached for ClientId={ClientId}. ExpiresAtUtc={ExpiresAtUtc}", clientId, expiresAtUtc);
 
         return token;
     }

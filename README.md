@@ -39,11 +39,15 @@ dotnet restore Icegate.Integration.sln
 dotnet build Icegate.Integration.sln
 dotnet test tests/Icegate.Integration.Tests/Icegate.Integration.Tests.csproj
 
-# Configure secrets (never commit real values)
+# Configure secrets for at least one client (never commit real values) - see
+# docs/Multi_Client_Onboarding.md for the full onboarding process
 cd src/Icegate.Integration
-dotnet user-secrets set "Icegate:EncryptedCredentialData" "<value>"
-dotnet user-secrets set "Icegate:ApiKey" "<value>"
-dotnet user-secrets set "InternalApi:ApiKeys:0" "<a-generated-internal-key>"
+dotnet user-secrets set "IcegateClients:0:ClientId" "LOCAL-DEV"
+dotnet user-secrets set "IcegateClients:0:ApiKey" "<a-generated-internal-key>"
+dotnet user-secrets set "IcegateClients:0:EncryptedCredentialData" "<value>"
+dotnet user-secrets set "IcegateClients:0:DefaultSenderId" "<value>"
+dotnet user-secrets set "IcegateClients:0:DefaultIcegateId" "<value>"
+dotnet user-secrets set "IcegateClients:0:DefaultCustodianCode" "<value>"
 
 # Run against ICEGATE UAT (default Icegate:Environment = UAT)
 dotnet run
@@ -58,12 +62,23 @@ Swagger UI is available at `/swagger` in the `Development` environment. `/health
 is applied, independent of `ASPNETCORE_ENVIRONMENT`. **Never** pair UAT credentials with a PROD
 URL, or PROD credentials with a UAT URL - see `docs/Production_Checklist.md`.
 
+## Multi-client access
+
+This API supports multiple onboarded clients simultaneously, each with its **own** ICEGATE
+identity (own encrypted credential, own sender/ICEGATE ID/custodian code) and its **own**
+internal API key - never shared between clients. A client's key both authenticates it to
+our API and selects its ICEGATE credentials/token/defaults; nothing is shared across clients
+except infrastructure (URLs, environment, timeouts). See
+[`docs/Multi_Client_Onboarding.md`](docs/Multi_Client_Onboarding.md) for the exact steps to
+onboard, verify, rotate, or revoke a client.
+
 ## Key behaviors
 
-- **Token lifecycle**: a single in-memory token is generated on first use, reused across
+- **Token lifecycle**: each client's token is generated on first use, reused across
   requests, and refreshed automatically before its ~15 minute expiry (configurable safety
-  buffer). On a token-invalid/expired response, the cached token is cleared and the original
-  request is retried exactly once with a fresh token - never in a loop.
+  buffer). On a token-invalid/expired response, that client's cached token is cleared and the
+  original request is retried exactly once with a fresh token - never in a loop. Different
+  clients' tokens are cached and refreshed completely independently.
 - **Business validation errors from ICEGATE are never retried automatically** and their
   original wording is always preserved in `errorMessage`.
 - **Transient failures** (timeouts, 5xx, 429) go through a controlled Polly retry policy.
@@ -79,6 +94,8 @@ URL, or PROD credentials with a UAT URL - see `docs/Production_Checklist.md`.
 
 - [`docs/Developer_Integration_Guide.md`](docs/Developer_Integration_Guide.md) - how the
   legacy application should call this API.
+- [`docs/Multi_Client_Onboarding.md`](docs/Multi_Client_Onboarding.md) - step-by-step process
+  to onboard, verify, rotate, or revoke a client for multi-client access.
 - [`docs/UAT_Test_Cases.md`](docs/UAT_Test_Cases.md) - TC01-TC22 test procedure.
 - [`docs/Production_Checklist.md`](docs/Production_Checklist.md) - UAT -> PROD checklist.
 - [`docs/API_Contract_Assumptions.md`](docs/API_Contract_Assumptions.md) - every

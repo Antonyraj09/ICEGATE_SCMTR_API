@@ -9,26 +9,32 @@ using Microsoft.Extensions.Options;
 namespace Icegate.Integration.Services;
 
 /// <summary>
-/// Calls the ICEGATE Authentication API (POST {AuthenticationUrl}, application/json).
-/// Sends only the pre-built encrypted credential payload - never plaintext username/password.
+/// Calls the ICEGATE Authentication API (POST {AuthenticationUrl}, application/json) using the
+/// requesting client's own encrypted credential payload - never plaintext username/password,
+/// and never another client's credentials. The Authentication URL/environment/timeout are
+/// shared infrastructure (<see cref="IcegateSettings"/>); the credential itself is per-client
+/// (<see cref="IcegateClientSettings"/>, resolved via <see cref="IIcegateClientRegistry"/>).
 /// </summary>
 public class IcegateAuthenticationService : IIcegateAuthenticationService
 {
     private readonly IIcegateHttpClient _httpClient;
+    private readonly IIcegateClientRegistry _clientRegistry;
     private readonly IOptionsMonitor<IcegateSettings> _settings;
     private readonly ILogger<IcegateAuthenticationService> _logger;
 
     public IcegateAuthenticationService(
         IIcegateHttpClient httpClient,
+        IIcegateClientRegistry clientRegistry,
         IOptionsMonitor<IcegateSettings> settings,
         ILogger<IcegateAuthenticationService> logger)
     {
         _httpClient = httpClient;
+        _clientRegistry = clientRegistry;
         _settings = settings;
         _logger = logger;
     }
 
-    public async Task<(string Token, DateTimeOffset ExpiresAtUtc)> AuthenticateAsync(CancellationToken cancellationToken = default)
+    public async Task<(string Token, DateTimeOffset ExpiresAtUtc)> AuthenticateAsync(string clientId, CancellationToken cancellationToken = default)
     {
         var settings = _settings.CurrentValue;
 
@@ -37,16 +43,21 @@ public class IcegateAuthenticationService : IIcegateAuthenticationService
             throw new IcegateEndpointNotConfirmedException(nameof(settings.AuthenticationUrl));
         }
 
-        if (string.IsNullOrWhiteSpace(settings.EncryptedCredentialData))
+        if (!_clientRegistry.TryGetByClientId(clientId, out var client) || client is null)
+        {
+            throw new IcegateTokenException(IcegateErrorCode.InvalidApiKey, $"No enabled client is registered for ClientId '{clientId}'.");
+        }
+
+        if (string.IsNullOrWhiteSpace(client.EncryptedCredentialData))
         {
             throw new IcegateTokenException(
                 IcegateErrorCode.InvalidApiKey,
-                "ICEGATE:EncryptedCredentialData is not configured. Configure the encrypted credential payload via secret storage.");
+                $"IcegateClients[{clientId}].EncryptedCredentialData is not configured. Configure the encrypted credential payload via secret storage.");
         }
 
-        var request = new IcegateAuthenticationRequest { Data = settings.EncryptedCredentialData };
+        var request = new IcegateAuthenticationRequest { Data = client.EncryptedCredentialData };
 
-        _logger.LogInformation("Requesting a new ICEGATE token (Environment={Environment}).", settings.Environment);
+        _logger.LogInformation("Requesting a new ICEGATE token. ClientId={ClientId} Environment={Environment}", clientId, settings.Environment);
 
         using var response = await _httpClient.PostJsonAsync(settings.AuthenticationUrl, request, cancellationToken: cancellationToken);
         await response.EnsureIcegateSuccessAsync(cancellationToken);
@@ -63,7 +74,7 @@ public class IcegateAuthenticationService : IIcegateAuthenticationService
         var lifetimeSeconds = body.ExpiresInSeconds is > 0 ? body.ExpiresInSeconds.Value : settings.TokenNominalLifetimeSeconds;
         var expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(lifetimeSeconds);
 
-        _logger.LogInformation("ICEGATE token generated successfully. ExpiresAtUtc={ExpiresAtUtc}", expiresAtUtc);
+        _logger.LogInformation("ICEGATE token generated successfully. ClientId={ClientId} ExpiresAtUtc={ExpiresAtUtc}", clientId, expiresAtUtc);
 
         // Never log the token value itself.
         return (token, expiresAtUtc);

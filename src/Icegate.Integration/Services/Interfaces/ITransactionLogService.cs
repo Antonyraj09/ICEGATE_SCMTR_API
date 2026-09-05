@@ -7,6 +7,7 @@ namespace Icegate.Integration.Services.Interfaces;
 public interface ITransactionLogService
 {
     Task<IcegateApiTransaction> CreateAsync(
+        string clientId,
         IcegateApiType apiType,
         string correlationId,
         string? localReferenceNo,
@@ -32,5 +33,6 @@ public interface ITransactionLogService
         string? zipFilePath = null,
         CancellationToken cancellationToken = default);
 
-    Task<IcegateApiTransaction?> FindLatestByUniqueIdAsync(string uniqueId, CancellationToken cancellationToken = default);
+    /// <summary>Scoped to a single client so one client can never look up another client's transaction by guessing a uniqueId.</summary>
+    Task<IcegateApiTransaction?> FindLatestByUniqueIdAsync(string clientId, string uniqueId, CancellationToken cancellationToken = default);
 }

@@ -82,19 +82,22 @@ if no explicit expiry is present, `Icegate:TokenNominalLifetimeSeconds` (default
 
 The document specifies the Authentication API request body is `{ "data": "<encrypted-user-
 credentials>" }` but does not specify the encryption algorithm/key exchange used to build that
-payload. This solution treats `Icegate:EncryptedCredentialData` as an already-encrypted,
-externally-supplied value (populated via secret storage) and passes it through unchanged -
-**it does not perform any encryption itself**, since the algorithm was not specified. If
-ICEGATE requires a specific encryption routine to build `data` from a username/password, that
-routine must be added to `IcegateAuthenticationService` once the algorithm is confirmed.
+payload. This solution treats each onboarded client's `IcegateClients[].EncryptedCredentialData`
+as an already-encrypted, externally-supplied value (populated via secret storage, one per
+client - see `docs/Multi_Client_Onboarding.md`) and passes it through unchanged - **it does
+not perform any encryption itself**, since the algorithm was not specified. If ICEGATE
+requires a specific encryption routine to build `data` from a username/password, that routine
+must be added to `IcegateAuthenticationService` once the algorithm is confirmed.
 
 ## 7. Internal API authentication mechanism
 
 The document does not govern how our own (.NET 8) API should be secured against the legacy
-application, only that it must be secured separately from ICEGATE. `X-API-KEY` was chosen
-per the task's own example. This is an implementation choice, not an ICEGATE requirement, and
-can be swapped for another mechanism (mutual TLS, OAuth client-credentials, etc.) without
-touching any ICEGATE-facing code.
+application(s), only that it must be secured separately from ICEGATE. `X-API-KEY` was chosen
+per the task's own example, extended to a one-key-per-onboarded-client model
+(`IcegateClients[].ApiKey`) so multiple clients can each be authenticated AND routed to their
+own ICEGATE identity by the same header. This is an implementation choice, not an ICEGATE
+requirement, and can be swapped for another mechanism (mutual TLS, OAuth client-credentials,
+etc.) without touching any ICEGATE-facing code.
 
 ## How to resolve these items
 

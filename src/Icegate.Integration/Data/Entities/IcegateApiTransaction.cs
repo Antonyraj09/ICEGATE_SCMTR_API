@@ -15,6 +15,10 @@ public class IcegateApiTransaction
     [Key]
     public long Id { get; set; }
 
+    /// <summary>The onboarded client (own ICEGATE identity) this transaction was executed for. See IcegateClientSettings.</summary>
+    [MaxLength(100)]
+    public string ClientId { get; set; } = string.Empty;
+
     [MaxLength(100)]
     public string? LocalReferenceNo { get; set; }
 

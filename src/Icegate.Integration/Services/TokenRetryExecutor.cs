@@ -17,10 +17,11 @@ public class TokenRetryExecutor : ITokenRetryExecutor
     }
 
     public async Task<HttpResponseMessage> ExecuteAsync(
+        string clientId,
         Func<string, CancellationToken, Task<HttpResponseMessage>> sendAsync,
         CancellationToken cancellationToken = default)
     {
-        var token = await _tokenService.GetTokenAsync(cancellationToken);
+        var token = await _tokenService.GetTokenAsync(clientId, cancellationToken);
 
         HttpResponseMessage response;
         try
@@ -31,10 +32,12 @@ public class TokenRetryExecutor : ITokenRetryExecutor
         }
         catch (IcegateTokenException ex)
         {
-            _logger.LogWarning("ICEGATE token rejected ({ErrorCode}). Clearing cached token and retrying once.", ex.ErrorCode);
+            _logger.LogWarning(
+                "ICEGATE token rejected for ClientId={ClientId} ({ErrorCode}). Clearing cached token and retrying once.",
+                clientId, ex.ErrorCode);
 
-            _tokenService.InvalidateCachedToken();
-            var newToken = await _tokenService.GetTokenAsync(cancellationToken);
+            _tokenService.InvalidateCachedToken(clientId);
+            var newToken = await _tokenService.GetTokenAsync(clientId, cancellationToken);
 
             response = await sendAsync(newToken, cancellationToken);
             await response.EnsureIcegateSuccessAsync(cancellationToken);

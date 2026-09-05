@@ -17,7 +17,8 @@ public class IcegateDbContext : DbContext
 
         modelBuilder.Entity<IcegateApiTransaction>(entity =>
         {
-            entity.HasIndex(e => e.IcegateUniqueId);
+            entity.HasIndex(e => e.ClientId);
+            entity.HasIndex(e => new { e.ClientId, e.IcegateUniqueId });
             entity.HasIndex(e => e.CorrelationId);
             entity.HasIndex(e => e.LocalReferenceNo);
             entity.HasIndex(e => new { e.SenderId, e.MessageId });

@@ -14,15 +14,20 @@ once cut over.
       was `CONFIRM_WITH_ICEGATE` even in UAT per the source document; must not go live with
       that placeholder still set.
 - [ ] Production Get Zip Acknowledgement URL confirmed (`Icegate:GetZipAcknowledgementUrl`).
-- [ ] Production API key obtained and stored in secret manager (never in `appsettings.*.json`
-      in source control).
-- [ ] Production credentials (whatever ICEGATE requires to build the encrypted `data` payload)
-      obtained and stored securely.
-- [ ] Production ICEGATE ID confirmed (`Icegate:IcegateId`).
-- [ ] Production sender ID confirmed (`Icegate:SenderId`).
-- [ ] Production custodian code confirmed (`Icegate:CustodianCode`).
-- [ ] Authorization mapping confirmed with ICEGATE (sender ID / ICEGATE ID / custodian code
-      combination is authorized for production SCMTR filing).
+      These four URLs are shared infrastructure - confirmed once, used by every client.
+- [ ] **For each client being onboarded to PROD** (repeat per client - see
+      `docs/Multi_Client_Onboarding.md`):
+  - [ ] Production ICEGATE API key / encrypted credential payload obtained and stored in the
+        secret manager as that client's `IcegateClients[].EncryptedCredentialData` /
+        `IcegateApiKey` (never in `appsettings.*.json` in source control).
+  - [ ] Production ICEGATE ID confirmed (`IcegateClients[].DefaultIcegateId`).
+  - [ ] Production sender ID confirmed (`IcegateClients[].DefaultSenderId`).
+  - [ ] Production custodian code confirmed (`IcegateClients[].DefaultCustodianCode`).
+  - [ ] Authorization mapping confirmed with ICEGATE (this client's sender ID / ICEGATE ID /
+        custodian code combination is authorized for production SCMTR filing).
+  - [ ] A fresh internal API key generated for this client's PROD deployment (distinct from
+        its UAT/dev key and from every other client's key) and set as
+        `IcegateClients[].ApiKey`.
 
 ## 2. Connectivity & security
 
@@ -32,9 +37,9 @@ once cut over.
       production (`ServicePointManager`/`HttpClientHandler` certificate callbacks). Any UAT-only
       workaround is isolated behind an environment check and does not compile/run under
       `Environment = PROD`.
-- [ ] Internal API (`InternalApi:ApiKeys`) production key(s) generated, distinct from any
-      UAT/dev key, and distributed to the legacy application's production configuration only
-      through secret storage.
+- [ ] Every onboarded client's production internal API key (see section 1 above) has been
+      distributed to that client's production configuration only through secret storage -
+      never via email/chat/shared docs.
 - [ ] HTTPS enforced end-to-end (our API's `UseHttpsRedirection`, the reverse proxy/load
       balancer terminating TLS, and the legacy application's outbound calls).
 
@@ -58,10 +63,10 @@ once cut over.
       full token lifecycle (generate -> reuse -> refresh) in the production configuration.
 - [ ] Confirmed the full SCMTR JSON body is not logged in production (only metadata: file
       name, hash, size, correlation ID, transaction status).
-- [ ] Secret storage verified: `Icegate:ApiKey`, `Icegate:EncryptedCredentialData`,
-      `InternalApi:ApiKeys`, and the production database connection string are sourced from
-      the production secret manager / environment variables, not from any file under source
-      control.
+- [ ] Secret storage verified: every client's `IcegateClients[].ApiKey`,
+      `IcegateClients[].EncryptedCredentialData`, `IcegateClients[].IcegateApiKey`, and the
+      production database connection string are sourced from the production secret manager /
+      environment variables, not from any file under source control.
 - [ ] File storage backup/retention policy verified for `FileStorage:InboundPath`,
       `FileStorage:AckPath`, `FileStorage:ZipAckPath` (production paths, disk space, backup
       job, retention/purge policy).
